@@ -145,7 +145,9 @@ impl QuicDataInput {
             _ = sender.send(data).await;
             return Ok(());
         }
-
+        if self.stream_sender.is_disconnected() {
+            return Err(io::Error::new(io::ErrorKind::BrokenPipe,"no active listener"))
+        }
         // new quic connect
         if hdr.ty == quiche::Type::Initial {
             let mut scid = [0; quiche::MAX_CONN_ID_LEN];
