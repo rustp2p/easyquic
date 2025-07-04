@@ -1,0 +1,22 @@
+[package]
+name = "easyquic"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1.46.0", features = ["full"] }
+tokio-util = "0.7.15"
+flume = { version = "0.11.1", features = ["async"] }
+
+quiche = "0.24.4"
+ring = "0.17.14"
+bytes = "1.10.1"
+log = "0.4.27"
+parking_lot = "0.12"
+
+[dev-dependencies]
+rcgen = "0.14.1"
+tokio-util = { version = "0.7.15", features = ["full"] }
+futures = "0.3.31"
+clap = { version = "4.5.40", features = ["derive"] }
+env_logger = "0.11.8"
