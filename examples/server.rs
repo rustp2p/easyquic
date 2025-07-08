@@ -17,12 +17,12 @@ pub async fn main() {
         let mut buf = vec![0u8; 65536];
         loop {
             tokio::select! {
-                rs=udp.recv_from(&mut buf) => {
-                    let (len,remote_addr) = rs.unwrap();
-                    io.input(BytesMut::from(&buf[..len]),local_addr,remote_addr).await.unwrap();
+                pkt=udp.recv_from(&mut buf) => {
+                    let (len,remote_addr) = pkt.unwrap();
+                    io.send(BytesMut::from(&buf[..len]),local_addr,remote_addr).await.unwrap();
                 }
-                output=io.output() => {
-                    let (buf,send_info) = output.unwrap();
+                quic_pkt=io.recv() => {
+                    let (buf,send_info) = quic_pkt.unwrap();
                     udp.send_to(&buf,send_info.to).await.unwrap();
                 }
             }

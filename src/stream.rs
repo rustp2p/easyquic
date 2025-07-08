@@ -352,8 +352,8 @@ pub(crate) async fn quic_run(
         Box::pin(tokio::time::sleep(Duration::from_millis(10)))
     };
     let mut buf = vec![0; 65536];
-    let mut input_data = Option::<BytesMut>::None;
-    let mut output_data = Option::<BytesMut>::None;
+    let mut input_data = None::<BytesMut>;
+    let mut output_data = None::<BytesMut>;
     'out: loop {
         if quic_conn.is_closed() {
             log::debug!("quic connection closed:{recv_info:?}");

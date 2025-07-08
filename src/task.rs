@@ -10,66 +10,66 @@ use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-pub fn new_context(config: Config) -> io::Result<(QuicIO, QuicConnect, QuicListener)> {
+pub fn new_context(config: Config) -> io::Result<(QuicIO, QuicEndpoint, QuicListener)> {
     let config = Arc::new(Mutex::new(config));
-    let (output_sender, output_receiver) = tokio::sync::mpsc::channel(128);
+    let (quic_pkt_tx, quic_pkt_rx) = tokio::sync::mpsc::channel(128);
     let (stream_sender, stream_receiver) = flume::bounded(128);
     let map = Arc::new(RwLock::new(HashMap::new()));
-    let quic_connect = QuicConnect {
+    let quic_endpoint = QuicEndpoint {
         map: map.clone(),
-        output_sender: output_sender.clone(),
+        quic_pkt_tx: quic_pkt_tx.clone(),
         config: config.clone(),
     };
 
-    let output = QuicDataOutput { output_receiver };
-    let input = QuicDataInput {
+    let quic_rx = QuicPacketReceiver { quic_pkt_rx };
+    let quic_tx = QuicPacketSender {
         map,
         config,
-        output_sender,
+        quic_pkt_tx,
         stream_sender,
     };
     let listener = QuicListener {
         receiver: stream_receiver,
     };
-    let quic_io = QuicIO { input, output };
-    Ok((quic_io, quic_connect, listener))
+    let quic_io = QuicIO { quic_tx, quic_rx };
+    Ok((quic_io, quic_endpoint, listener))
 }
 pub struct QuicIO {
-    input: QuicDataInput,
-    output: QuicDataOutput,
+    quic_tx: QuicPacketSender,
+    quic_rx: QuicPacketReceiver,
 }
 impl QuicIO {
-    pub fn split(self) -> (QuicDataInput, QuicDataOutput) {
-        (self.input, self.output)
+    pub fn split(self) -> (QuicPacketSender, QuicPacketReceiver) {
+        (self.quic_tx, self.quic_rx)
     }
-    pub async fn output(&mut self) -> io::Result<(BytesMut, SendInfo)> {
-        self.output.output().await
+    pub async fn recv(&mut self) -> io::Result<(BytesMut, SendInfo)> {
+        self.quic_rx.recv().await
     }
-    pub async fn input(
+    pub async fn send(
         &mut self,
         data: BytesMut,
         local: SocketAddr,
         remote: SocketAddr,
     ) -> io::Result<()> {
-        self.input.input(data, local, remote).await
+        self.quic_tx.send(data, local, remote).await
     }
 }
-pub struct QuicDataOutput {
-    output_receiver: tokio::sync::mpsc::Receiver<(BytesMut, SendInfo)>,
+pub struct QuicPacketReceiver {
+    quic_pkt_rx: tokio::sync::mpsc::Receiver<(BytesMut, SendInfo)>,
 }
 
-pub struct QuicDataInput {
+pub struct QuicPacketSender {
     map: Map,
     config: Arc<Mutex<Config>>,
-    output_sender: tokio::sync::mpsc::Sender<(BytesMut, SendInfo)>,
+    quic_pkt_tx: tokio::sync::mpsc::Sender<(BytesMut, SendInfo)>,
     stream_sender: Sender<QuicStream>,
 }
-pub struct QuicConnect {
+pub struct QuicEndpoint {
     map: Map,
-    output_sender: tokio::sync::mpsc::Sender<(BytesMut, SendInfo)>,
+    quic_pkt_tx: tokio::sync::mpsc::Sender<(BytesMut, SendInfo)>,
     config: Arc<Mutex<Config>>,
 }
-impl QuicConnect {
+impl QuicEndpoint {
     pub async fn connect(
         &self,
         server_name: Option<&str>,
@@ -98,7 +98,7 @@ impl QuicConnect {
             quic_key,
             self.map.clone(),
             conn,
-            self.output_sender.clone(),
+            self.quic_pkt_tx.clone(),
             None,
             true,
         )
@@ -107,16 +107,16 @@ impl QuicConnect {
     }
 }
 
-impl QuicDataOutput {
-    pub async fn output(&mut self) -> io::Result<(BytesMut, SendInfo)> {
-        self.output_receiver
+impl QuicPacketReceiver {
+    pub async fn recv(&mut self) -> io::Result<(BytesMut, SendInfo)> {
+        self.quic_pkt_rx
             .recv()
             .await
             .ok_or_else(|| io::Error::from(io::ErrorKind::BrokenPipe))
     }
 }
-impl QuicDataInput {
-    pub async fn input(
+impl QuicPacketSender {
+    pub async fn send(
         &mut self,
         mut data: BytesMut,
         local: SocketAddr,
@@ -146,7 +146,10 @@ impl QuicDataInput {
             return Ok(());
         }
         if self.stream_sender.is_disconnected() {
-            return Err(io::Error::new(io::ErrorKind::BrokenPipe,"no active listener"))
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "no active listener",
+            ));
         }
         // new quic connect
         if hdr.ty == quiche::Type::Initial {
@@ -160,7 +163,7 @@ impl QuicDataInput {
                 quic_key,
                 self.map.clone(),
                 conn,
-                self.output_sender.clone(),
+                self.quic_pkt_tx.clone(),
                 Some(data),
                 false,
             )

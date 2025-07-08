@@ -26,18 +26,18 @@ pub async fn main() {
         let mut buf = vec![0u8; 65536];
         loop {
             tokio::select! {
-                rs=udp.recv_from(&mut buf) => {
-                    match rs {
+                pkt=udp.recv_from(&mut buf) => {
+                    match pkt {
                         Ok((len,remote_addr)) => {
-                            io.input(BytesMut::from(&buf[..len]),local_addr,remote_addr).await.unwrap();
+                            io.send(BytesMut::from(&buf[..len]),local_addr,remote_addr).await.unwrap();
                         }
                         Err(e) => {
                             println!("Error receiving UDP packet: {e}");
                         }
                     }
                 }
-                output=io.output() => {
-                    let (buf,send_info) = output.unwrap();
+                quic_pkt=io.recv() => {
+                    let (buf,send_info) = quic_pkt.unwrap();
                     if let Err(e) = udp.send_to(&buf,send_info.to).await{
                         println!("Error sending UDP message {e}");
                     }
