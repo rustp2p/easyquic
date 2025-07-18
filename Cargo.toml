@@ -1,7 +1,11 @@
 [package]
 name = "easyquic"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+description = "out-of-box quic stack based on quiche"
+license = "Apache-2.0"
+repository = "https://github.com/rustp2p/easyquic"
+keywords = ["quic","easy-quiche"]
 
 [dependencies]
 tokio = { version = "1.46.0", features = ["full"] }
